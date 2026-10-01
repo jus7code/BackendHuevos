@@ -1,0 +1,33 @@
+HUEVOPS - DATOS DE CONEXION
+===========================
+
+Estado de autenticacion
+-----------------------
+Usuario: no requerido
+Contrasena: no requerida
+Token/API key: no requerido
+
+El backend actualmente no tiene autenticacion implementada.
+
+Conexion local
+--------------
+API: http://localhost:8000
+WebSocket: ws://localhost:8000/video
+Salud: http://localhost:8000/health
+Deteccion de imagen: POST http://localhost:8000/detect
+
+Conexion desde otra maquina
+---------------------------
+Host publico: 44.199.34.125
+Puerto: 8000
+API: http://44.199.34.125:8000
+WebSocket: ws://44.199.34.125:8000/video
+Salud: http://44.199.34.125:8000/health
+Deteccion de imagen: POST http://44.199.34.125:8000/detect
+
+Notas
+-----
+- El WebSocket requiere enviar primero el mensaje JSON de tipo start.
+- El endpoint /detect recibe una imagen mediante multipart/form-data en el campo file.
+- La IP publica puede cambiar si la instancia se recrea.
+- Para uso en produccion se recomienda agregar HTTPS/WSS y autenticacion.

@@ -1,0 +1,169 @@
+HUEVOPS - INTEGRACION DEL FRONTEND CON EL BACKEND
+=================================================
+
+URL DEL WEBSOCKET
+-----------------
+
+Desarrollo:
+  ws://localhost:8000/video
+
+Produccion con HTTPS:
+  wss://tu-dominio.com/video
+
+El backend usa WebSocket nativo. No usar Socket.IO.
+
+
+ORDEN DE CONEXION
+-----------------
+
+1. Abrir el WebSocket.
+2. Enviar inmediatamente un mensaje de texto JSON de tipo start.
+3. Iniciar MediaRecorder cuando la conexion este abierta.
+4. Enviar los fragmentos de MediaRecorder como mensajes binarios.
+5. Leer los mensajes de texto JSON de tipo detections.
+6. Cerrar el WebSocket al detener la transmision.
+
+
+MENSAJE INICIAL
+---------------
+
+Enviar texto JSON:
+
+{
+  "type": "start",
+  "sessionId": "uuid-generado-por-el-frontend",
+  "mimeType": "video/webm;codecs=vp8",
+  "width": 1280,
+  "height": 720,
+  "fps": 30,
+  "timesliceMs": 200
+}
+
+Reglas:
+- type debe ser start.
+- sessionId es obligatorio y debe ser unico por conexion.
+- sessionId debe conservarse exactamente en las respuestas.
+- mimeType debe contener video/webm.
+- width y height son obligatorios y deben ser enteros positivos.
+- fps y timesliceMs son informativos.
+- width y height deben corresponder al video original de la camara.
+- El decoder usa las dimensiones reales del WebM y registra cualquier diferencia.
+
+
+FRAGMENTOS DE VIDEO
+-------------------
+
+Despues del mensaje start, enviar los datos de MediaRecorder como mensajes
+binarios, en el mismo orden en que los entrega el navegador.
+
+Los fragmentos:
+- son bytes WebM/VP8 o WebM/VP9 del mismo flujo continuo;
+- no son imagenes JPEG ni PNG;
+- no deben convertirse a Base64;
+- no deben envolverse en JSON ni multipart/form-data;
+- no deben incluir sessionId, timestamp ni cabeceras propias.
+
+El backend mantiene un decodificador por conexion. No reiniciar el decoder
+para cada fragmento.
+
+El frontend debe elegir un formato compatible, preferiblemente:
+  video/webm;codecs=vp8
+  video/webm;codecs=vp9
+
+El backend rechaza formatos que no sean WebM.
+
+
+RESPUESTA DEL BACKEND
+---------------------
+
+El backend envia un mensaje de texto JSON por cada resultado:
+
+{
+  "type": "detections",
+  "sessionId": "uuid-generado-por-el-frontend",
+  "sequence": 1,
+  "detections": [
+    {
+      "id": "egg-1",
+      "label": "Huevo",
+      "status": "Roto",
+      "confidence": 0.97,
+      "box": [0.15, 0.23, 0.17, 0.43]
+    }
+  ]
+}
+
+Reglas:
+- type siempre es detections.
+- sessionId debe coincidir con el mensaje start.
+- sequence empieza en 1 y aumenta por cada respuesta.
+- detections siempre es una lista completa, no cambios parciales.
+- detections puede ser una lista vacia cuando no haya huevos.
+- id es texto y debe ser unico dentro de cada respuesta.
+- label permanece como Huevo para el contrato del frontend.
+- status indica el estado: Sano o Roto. El frontend debe dibujarlo junto a la box.
+- El endpoint de imagen dibuja Sano o Roto sobre cada caja.
+- confidence es un numero entre 0 y 1, no un porcentaje entre 0 y 100.
+- box tiene exactamente cuatro numeros: [x, y, ancho, alto].
+
+
+COORDENADAS DE LAS BOXES
+------------------------
+
+Las coordenadas estan normalizadas respecto al video original completo.
+
+Origen: esquina superior izquierda.
+Formato: [x, y, ancho, alto].
+
+Todos los valores deben estar entre 0 y 1.
+x + ancho no puede superar 1.
+y + alto no puede superar 1.
+
+Ejemplo:
+  [0.15, 0.23, 0.17, 0.43]
+
+La caja empieza al 15% del ancho y al 23% del alto, y ocupa el 17% del
+ancho y el 43% del alto.
+
+
+MENSAJES NO VALIDOS
+-------------------
+
+No enviar mensajes de aplicacion adicionales como:
+- ack
+- ready
+- progreso
+- error
+- heartbeat
+
+No enviar mensajes binarios desde el backend. Las unicas respuestas de
+aplicacion admitidas por el frontend son los JSON de tipo detections.
+
+
+CIERRE
+------
+
+Al detener la transmision, cerrar directamente el WebSocket.
+No enviar un mensaje JSON stop.
+
+Cada reconexion debe crear:
+- un nuevo WebSocket;
+- un nuevo sessionId;
+- un nuevo flujo MediaRecorder.
+
+El frontend debe ignorar respuestas con otro sessionId o con sequence menor
+o igual a la ultima respuesta recibida.
+
+RENDIMIENTO DE VIDEO
+--------------------
+La camara puede seguir enviando 30 FPS. El backend analiza hasta 5 FPS con
+imgsz=416 y descarta fotogramas atrasados. El frontend conserva las ultimas
+cajas entre respuestas. La frecuencia real depende de la carga del servidor.
+
+ENTRENAMIENTO
+-------------
+POST /train: multipart con file (ZIP YOLO), epochs, imgsz y batch.
+Respuesta 202 con jobId. Consultar GET /train/{jobId} hasta completed o failed.
+Descarga del resultado: GET /train/{jobId}/model.
+Registro: GET /train/{jobId}/log.
+Ver README.md para estructura del ZIP y limites. Clases: 0=Sano, 1=Roto.
